@@ -20,12 +20,12 @@
 
 
 handle(Req, _Args) ->
-    %io:format("Elli: ~p~n~p~n", [Req, _Args]),
+    io:format("Elli: ~p~n~p~n", [Req, _Args]),
     handle(elli_request:method(Req), elli_request:path(Req), elli_request:get_header(<<"Host">>, Req)).
 
 
 handle('GET', [<<".well-known">>, <<"acme-challenge">>, Token], Host) ->
-    %io:format("ELLI: host= ~p~n", [Host]),
+    io:format("ELLI: host= ~p~n", [Host]),
     Challenges = letsencrypt:get_challenge(),
 
     case maps:get(Host, Challenges, undefined) of
