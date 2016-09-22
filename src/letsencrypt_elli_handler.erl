@@ -21,10 +21,11 @@
 
 handle(Req, _Args) ->
     io:format("Elli: ~p~n~p~n", [Req, _Args]),
-    handle(elli_request:method(Req), elli_request:path(Req), elli_request:get_header(<<"Host">>, Req)).
+    handle(elli_request:method(Req), elli_request:path(Req), Req).
 
 
-handle('GET', [<<".well-known">>, <<"acme-challenge">>, Token], Host) ->
+handle('GET', [<<".well-known">>, <<"acme-challenge">>, Token], Req) ->
+    [Host|_]   = binary:split(elli_request:get_header(<<"Host">>, Req, <<>>), <<":">>),
     Challenges = letsencrypt:get_challenge(),
     io:format("ELLI: host= ~p, challenges= ~p~n", [Host, Challenges]),
 
