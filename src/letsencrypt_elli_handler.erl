@@ -25,16 +25,16 @@ handle(Req, _Args) ->
 
 
 handle('GET', [<<".well-known">>, <<"acme-challenge">>, Token], Host) ->
-    io:format("ELLI: host= ~p~n", [Host]),
     Challenges = letsencrypt:get_challenge(),
+    io:format("ELLI: host= ~p, challenges= ~p~n", [Host, Challenges]),
 
     case maps:get(Host, Challenges, undefined) of
         #{token := Token, thumbprint := Thumbprint} ->
-            %io:format("match: ~p -> ~p~n", [Token, Thumbprint]),
-             {200, [{<<"Content-Type">>, <<"text/plain">>}], Thumbprint};
+            io:format("match: ~p -> ~p~n", [Token, Thumbprint]),
+            {200, [{<<"Content-Type">>, <<"text/plain">>}], Thumbprint};
 
         _X     ->
-            %io:format("nomatch: ~p -> ~p~n", [Token, _X]),
+            io:format("nomatch: ~p -> ~p~n", [Token, _X]),
             {404, [], <<"Not Found">>}
     end.
 
