@@ -243,33 +243,42 @@ idle(get_challenge, _, State) ->
 %  - 'pending' waiting for challenges to be completes
 %
 idle({create, Domain, _Opts}, _, State=#state{directory=Dir, key=Key, jws=Jws,
-											  nonce=Nonce, opts=Opts}) ->
+                                              nonce=Nonce, opts=Opts}) ->
     % 'http-01' or 'tls-sni-01'
-	% TODO: validate type
+    % TODO: validate type
     ChallengeType = maps:get(challenge, Opts, 'http-01'),
 
     %Conn  = get_conn(State),
     %Nonce = get_nonce(Conn, State),
-	%TODO: SANs
-    %SANs  = maps:get(san, Opts, []),
+    SANs  = lists:map(
+        fun(D) -> bin(D) end,
+        maps:get(san, Opts, [])),
 
-	{ok, Accnt, Location, Nonce2} = letsencrypt_api:account(Dir, Key, Jws#{nonce => Nonce}, Opts),
-	AccntKey = maps:get(<<"key">>, Accnt),
+    {ok, Accnt, Location, Nonce2} = letsencrypt_api:account(Dir, Key, Jws#{nonce => Nonce}, Opts),
+    AccntKey = maps:get(<<"key">>, Accnt),
 
-	Jws2 = #{
-		alg   => maps:get(alg, Jws),
-		nonce => Nonce2,
-		kid   => Location
-	},
-	%TODO: checks order is ok
-	{ok, Order, OrderLocation, Nonce3} = letsencrypt_api:order(Dir, bin(Domain), Key, Jws2, Opts),
-	% we need to keep trace of order location
-	Order2 = Order#{<<"location">> => OrderLocation},
+    Jws2 = #{
+        alg   => maps:get(alg, Jws),
+        nonce => Nonce2,
+        kid   => Location
+    },
+    %TODO: checks order is ok
+    {ok, Order, OrderLocation, Nonce3} = letsencrypt_api:order(Dir, bin(Domain), Key, Jws2, Opts),
+    % we need to keep trace of order location
+    Order2 = Order#{<<"location">> => OrderLocation},
 
     %Nonce2    = letsencrypt_api:new_reg(Conn, BasePath, Key, JWS#{nonce => Nonce}),
     %AuthzResp = authz([Domain|SANs], ChallengeType, State#state{conn=Conn, nonce=Nonce2}),
+
+    StateAuth = State#state{
+        domain = Domain,
+        jws = Jws2,
+        account_key = AccntKey,
+        nonce = Nonce3,
+        sans = SANs
+    },
     AuthUris = maps:get(<<"authorizations">>, Order),
-    AuthzResp = authz(ChallengeType, AuthUris, State#state{domain=Domain, jws=Jws2, account_key=AccntKey, nonce=Nonce3}),
+    AuthzResp = authz(ChallengeType, AuthUris, StateAuth),
     {StateName, Reply, Challenges, Nonce5} = case AuthzResp of
             {error, Err, Nonce3} ->
                 {idle, {error, Err}, nil, Nonce3};
@@ -278,8 +287,12 @@ idle({create, Domain, _Opts}, _, State=#state{directory=Dir, key=Key, jws=Jws,
                 {pending, ok, Xchallenges, Nonce4}
     end,
 
-    {reply, Reply, StateName, 
-     State#state{domain=Domain, jws=Jws2, nonce=Nonce5, order=Order2, challenges=Challenges, sans=[], account_key=AccntKey}}.
+    StateReply = StateAuth#state{
+        order = Order2,
+        nonce = Nonce5,
+        challenges = Challenges
+    },
+    {reply, Reply, StateName, StateReply}.
 
 
 % state 'pending'
