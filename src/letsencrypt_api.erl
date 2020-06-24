@@ -83,7 +83,7 @@ tcpconn(Key={Proto, Host, Port}) ->
 %
 -spec decode(map(), map()) -> {ok, map()}.
 decode(#{json := true}, Response=#{body := Body}) ->
-	Payload = jiffy:decode(Body, [return_maps, use_nil]),
+	Payload = jsx:decode(Body, [return_maps, use_nil]),
 	{ok, Response#{json => Payload}};
 decode(_, Response) ->
 	{ok, Response}.
