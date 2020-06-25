@@ -83,7 +83,7 @@
 %
 % returns:
 %	{ok, Pid}
-%	
+%
 -spec start(list()) -> {'ok', pid}|{'error', {'already_started',pid()}}.
 start(Args) ->
     gen_fsm:start_link({global, ?MODULE}, ?MODULE, Args, []).
@@ -242,17 +242,14 @@ idle(get_challenge, _, State) ->
 %  - 'idle' if process failed
 %  - 'pending' waiting for challenges to be completes
 %
-idle({create, Domain, _Opts}, _, State=#state{directory=Dir, key=Key, jws=Jws,
+idle({create, Domain, CertOpts}, _, State=#state{directory=Dir, key=Key, jws=Jws,
                                               nonce=Nonce, opts=Opts}) ->
     % 'http-01' or 'tls-sni-01'
     % TODO: validate type
     ChallengeType = maps:get(challenge, Opts, 'http-01'),
-
-    %Conn  = get_conn(State),
-    %Nonce = get_nonce(Conn, State),
     SANs  = lists:map(
         fun(D) -> bin(D) end,
-        maps:get(san, Opts, [])),
+        maps:get(san, CertOpts, [])),
 
     {ok, Accnt, Location, Nonce2} = letsencrypt_api:account(Dir, Key, Jws#{nonce => Nonce}, Opts),
     AccntKey = maps:get(<<"key">>, Accnt),
@@ -263,13 +260,11 @@ idle({create, Domain, _Opts}, _, State=#state{directory=Dir, key=Key, jws=Jws,
         kid   => Location
     },
     %TODO: checks order is ok
-    {ok, Order, OrderLocation, Nonce3} = letsencrypt_api:order(Dir, bin(Domain), Key, Jws2, Opts),
+    Domains = [ bin(Domain) | SANs ],
+    {ok, Order, OrderLocation, Nonce3} = letsencrypt_api:new_order(Dir, Domains, Key, Jws2, Opts),
+
     % we need to keep trace of order location
     Order2 = Order#{<<"location">> => OrderLocation},
-
-    %Nonce2    = letsencrypt_api:new_reg(Conn, BasePath, Key, JWS#{nonce => Nonce}),
-    %AuthzResp = authz([Domain|SANs], ChallengeType, State#state{conn=Conn, nonce=Nonce2}),
-
     StateAuth = State#state{
         domain = Domain,
         jws = Jws2,
@@ -369,7 +364,8 @@ valid(_, _, State=#state{mode=Mode, domain=Domain, sans=SANs, cert_path=CertPath
 
 	%NOTE: keyfile is required for csr generation
 	#{file := KeyFile} = letsencrypt_ssl:private_key({new, str(Domain) ++ ".key"}, CertPath),
-	Csr = letsencrypt_ssl:cert_request(str(Domain), CertPath, SANs),
+
+	Csr = letsencrypt_ssl:cert_request(Domain, CertPath, SANs),
 	{ok, FinOrder, _, Nonce2} = letsencrypt_api:finalize(Order, Csr, Key,
 														 Jws#{nonce => Nonce}, Opts),
 
@@ -392,7 +388,7 @@ valid(_, _, State=#state{mode=Mode, domain=Domain, sans=SANs, cert_path=CertPath
 %   state 'processing' : still ongoing
 %   state 'valid'      : certificate is ready
 finalize(processing, _, State=#state{order=Order, key=Key, jws=Jws, nonce=Nonce, opts=Opts}) ->
-	{ok, Order2, _, Nonce2} = letsencrypt_api:order(
+	{ok, Order2, _, Nonce2} = letsencrypt_api:get_order(
 		maps:get(<<"location">>, Order, nil),
 		Key, Jws#{nonce => Nonce}, Opts),
 	{reply, status(maps:get(<<"status">>, Order2, nil)), finalize,
@@ -415,7 +411,7 @@ finalize(valid, _, State=#state{order=Order, domain=Domain, cert_key_file=KeyFil
                                 opts=Opts}) ->
 	% download certificate
 	{ok, Cert} = letsencrypt_api:certificate(Order, Key, Jws#{nonce => Nonce}, Opts),
-	CertFile   = letsencrypt_ssl:certificate(str(Domain), Cert, CertPath),
+	CertFile   = letsencrypt_ssl:certificate(Domain, Cert, CertPath),
 
 	{reply, {ok, #{key => bin(KeyFile), cert => bin(CertFile)}}, idle,
 	 State#state{nonce=undefined}};
